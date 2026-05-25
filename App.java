@@ -2,7 +2,7 @@
 //DEPS io.javelit:javelit:0.86.0
 
 import io.javelit.core.Jt;
-import io.javelit.core.UploadedFile;
+import io.javelit.core.JtUploadedFile;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
@@ -24,11 +24,6 @@ public class App {
     // AES HELPERS
     // ──────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Build a SecretKey from the user's raw string.
-     * keySizeBytes = 16 (AES-128) or 32 (AES-256).
-     * Shorter keys are zero-padded; longer keys are trimmed.
-     */
     private static SecretKey makeKey(String raw, int keySizeBytes) {
         byte[] keyBytes = new byte[keySizeBytes];
         byte[] src = raw.getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -36,10 +31,6 @@ public class App {
         return new SecretKeySpec(keyBytes, "AES");
     }
 
-    /**
-     * Encrypt bytes with AES/CBC/PKCS5Padding.
-     * Format: [ 16-byte IV ][ cipher bytes ]
-     */
     private static byte[] encrypt(byte[] data, SecretKey key) throws Exception {
         byte[] iv = new byte[16];
         new SecureRandom().nextBytes(iv);
@@ -52,10 +43,6 @@ public class App {
         return result;
     }
 
-    /**
-     * Decrypt bytes produced by encrypt().
-     * Expects: [ 16-byte IV ][ cipher bytes ]
-     */
     private static byte[] decrypt(byte[] data, SecretKey key) throws Exception {
         if (data.length < 17) throw new IllegalArgumentException("Data too short – not a valid .enc file.");
         byte[] iv = new byte[16];
@@ -77,7 +64,6 @@ public class App {
         return String.format("%.2f MB", bytes / (1024.0 * 1024));
     }
 
-    /** Render a download link via an HTML <a> tag with a data URI. */
     private static String downloadLink(byte[] data, String filename, String mimeType, String label) {
         String b64 = Base64.getEncoder().encodeToString(data);
         return """
@@ -90,9 +76,7 @@ public class App {
             """.formatted(mimeType, b64, filename, label);
     }
 
-    /** Render a copy-to-clipboard button + pre for encrypted text. */
     private static String copyableText(String text) {
-        // escape for JS string literal
         String escaped = text.replace("\\", "\\\\").replace("`", "\\`");
         return """
             <div style="position:relative;margin-top:6px">
@@ -112,14 +96,13 @@ public class App {
             """.formatted(escaped, text);
     }
 
-    /** Key-strength badge: color + label based on char count vs AES key size. */
     private static String keyStrengthBadge(int len, int needed) {
         String color, label;
-        if (len == 0)          { color = "#78909c"; label = "no key entered"; }
+        if (len == 0)              { color = "#78909c"; label = "no key entered"; }
         else if (len < needed / 2) { color = "#e53935"; label = "weak (too short)"; }
         else if (len < needed)     { color = "#fb8c00"; label = "partial (will be padded)"; }
         else if (len == needed)    { color = "#43a047"; label = "perfect length ✓"; }
-        else                       { color = "#fb8c00"; label = "too long (will be trimmed to " + needed + " chars)"; }
+        else                       { color = "#fb8c00"; label = "too long (trimmed to " + needed + " chars)"; }
         return """
             <span style="background:%s;color:#fff;padding:3px 8px;border-radius:4px;
                           font-size:12px;font-weight:600">%s</span>
@@ -132,15 +115,15 @@ public class App {
 
     public static void main(String[] args) {
 
-        // ── Header ────────────────────────────────────────────────────────────
+        // ── Header ─────────────────────────────────────────────────────────
         Jt.title("🔐 Crypto App").use();
         Jt.markdown("""
-            AES encryption & decryption for **text** and **images**.  
-            Choose your key strength, enter a key, then encrypt or decrypt.
+            AES encryption & decryption for **text** and **images**.
+            Enter a key, choose a tab, and go!
             """).use();
-        Jt.divider("header-div").use();
+        Jt.divider().use();
 
-        // ── Key configuration ─────────────────────────────────────────────────
+        // ── Key configuration ───────────────────────────────────────────────
         var cols = Jt.columns(2).use();
 
         String aesMode = Jt.radio("AES Strength", List.of("AES-128 (16-char key)", "AES-256 (32-char key)"))
@@ -151,10 +134,9 @@ public class App {
                 .placeholder(keySize == 16 ? "mysecretkey12345" : "mysecretkey1234567890123456789012")
                 .use(cols.col(1));
 
-        // Key strength indicator
         int keyLen = (secretKey == null) ? 0 : secretKey.length();
         Jt.html(keyStrengthBadge(keyLen, keySize) +
-                " &nbsp;<small style='color:#888'>Key will be padded/trimmed to <b>" + keySize + " bytes</b></small>"
+                " &nbsp;<small style='color:#888'>Key padded/trimmed to <b>" + keySize + " bytes</b></small>"
         ).use();
 
         boolean keyOk = secretKey != null && !secretKey.isBlank();
@@ -162,14 +144,14 @@ public class App {
             Jt.warning("⚠️  Enter a secret key above to start.").use();
         }
 
-        Jt.divider("tabs-div").use();
+        Jt.divider().use();
 
-        // ── Tabs ──────────────────────────────────────────────────────────────
+        // ── Tabs ────────────────────────────────────────────────────────────
         var tabs = Jt.tabs(List.of("📝 Text", "🖼️ Image")).use();
 
-        // ══════════════════════════════════════════════════════════════════════
+        // ════════════════════════════════════════════════════════════════════
         // TAB 1 – TEXT
-        // ══════════════════════════════════════════════════════════════════════
+        // ════════════════════════════════════════════════════════════════════
         var textTab = tabs.tab(0);
 
         var textMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).use(textTab);
@@ -194,20 +176,18 @@ public class App {
                         byte[] encrypted = encrypt(
                                 plainText.getBytes(java.nio.charset.StandardCharsets.UTF_8), key);
                         String b64 = Base64.getEncoder().encodeToString(encrypted);
-
-                        Jt.success("✅ Encrypted successfully! (%s → %s)"
+                        Jt.success("✅ Encrypted! (%s → %s)"
                                 .formatted(humanSize(plainText.length()), humanSize(b64.length()))).use(textTab);
                         Jt.subheader("Encrypted output (Base64):").use(textTab);
                         Jt.html(copyableText(b64)).use(textTab);
-                        Jt.info("💡 Copy this output and paste it in Decrypt mode to reverse the operation.").use(textTab);
-
+                        Jt.info("💡 Paste this in Decrypt mode with the same key to reverse.").use(textTab);
                     } catch (Exception e) {
                         Jt.error("Encryption failed: " + e.getMessage()).use(textTab);
                     }
                 }
             }
 
-        } else { // Decrypt text
+        } else {
 
             String cipherB64 = Jt.textArea("Encrypted text (Base64)")
                     .placeholder("Paste the Base64-encoded cipher text here…")
@@ -226,11 +206,9 @@ public class App {
                         byte[] cipherBytes = Base64.getDecoder().decode(cipherB64.trim());
                         byte[] plain = decrypt(cipherBytes, key);
                         String result = new String(plain, java.nio.charset.StandardCharsets.UTF_8);
-
                         Jt.success("✅ Decrypted successfully!").use(textTab);
                         Jt.subheader("Decrypted text:").use(textTab);
                         Jt.text(result).use(textTab);
-
                     } catch (IllegalArgumentException e) {
                         Jt.error("Invalid Base64 – make sure you pasted the full encrypted output.").use(textTab);
                     } catch (Exception e) {
@@ -240,9 +218,9 @@ public class App {
             }
         }
 
-        // ══════════════════════════════════════════════════════════════════════
+        // ════════════════════════════════════════════════════════════════════
         // TAB 2 – IMAGE
-        // ══════════════════════════════════════════════════════════════════════
+        // ════════════════════════════════════════════════════════════════════
         var imgTab = tabs.tab(1);
 
         var imgMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).use(imgTab);
@@ -250,13 +228,16 @@ public class App {
 
         if (isImgEncrypt) {
 
-            // ── Encrypt image ─────────────────────────────────────────────────
-            Jt.info("📂 Upload a PNG, JPG, or BMP. The encrypted file downloads as **image.enc** — upload it in Decrypt mode to restore.").use(imgTab);
+            Jt.info("Upload a PNG, JPG, or BMP. The encrypted file downloads as .enc — upload it in Decrypt mode to restore.").use(imgTab);
 
-            UploadedFile imgFile = Jt.fileUploader("Upload image to encrypt").use(imgTab);
+            List<JtUploadedFile> imgFiles = Jt.fileUploader("Upload image to encrypt")
+                    .type(List.of(".png", ".jpg", ".jpeg", ".bmp"))
+                    .use(imgTab);
+
+            JtUploadedFile imgFile = imgFiles.isEmpty() ? null : imgFiles.getFirst();
 
             if (imgFile != null) {
-                Jt.markdown("**File:** `" + imgFile.name() + "` · " + humanSize(imgFile.bytes().length)).use(imgTab);
+                Jt.markdown("**File:** `" + imgFile.filename() + "` · " + humanSize(imgFile.content().length)).use(imgTab);
             }
 
             boolean go = Jt.button("🔒 Encrypt Image").use(imgTab);
@@ -268,11 +249,10 @@ public class App {
                     Jt.warning("Upload an image first.").use(imgTab);
                 } else {
                     try {
-                        byte[] imgBytes = imgFile.bytes();
+                        byte[] imgBytes = imgFile.content();
                         SecretKey key = makeKey(secretKey, keySize);
                         byte[] encrypted = encrypt(imgBytes, key);
 
-                        // Side-by-side: original image + result info
                         var imgCols = Jt.columns(2).use(imgTab);
 
                         Jt.subheader("Original").use(imgCols.col(0));
@@ -280,20 +260,16 @@ public class App {
                         Jt.text(humanSize(imgBytes.length)).use(imgCols.col(0));
 
                         Jt.subheader("Encrypted").use(imgCols.col(1));
-                        Jt.markdown("""
-                            The encrypted file is **binary** — it cannot be displayed as an image.  
-                            Download it below and keep it safe.
-                            """).use(imgCols.col(1));
+                        Jt.markdown("The encrypted file is **binary** — it cannot be displayed as an image. Download it below and keep it safe.").use(imgCols.col(1));
                         Jt.text("Encrypted size: " + humanSize(encrypted.length)).use(imgCols.col(1));
 
                         Jt.success("✅ Image encrypted!").use(imgTab);
 
-                        // Download .enc file
-                        String baseName = imgFile.name().replaceAll("\\.[^.]+$", "");
+                        String baseName = imgFile.filename().replaceAll("\\.[^.]+$", "");
                         Jt.html(downloadLink(encrypted, baseName + ".enc",
                                 "application/octet-stream", "⬇️ Download " + baseName + ".enc")).use(imgTab);
 
-                        Jt.info("💡 Upload the `.enc` file (with the same key) in **Decrypt** mode to get the original image back.").use(imgTab);
+                        Jt.info("💡 Upload the .enc file (with the same key) in Decrypt mode to restore the image.").use(imgTab);
 
                     } catch (Exception e) {
                         Jt.error("Encryption failed: " + e.getMessage()).use(imgTab);
@@ -303,13 +279,16 @@ public class App {
 
         } else {
 
-            // ── Decrypt image ─────────────────────────────────────────────────
-            Jt.info("📂 Upload the **`.enc` file** produced by the Encrypt step. Use the same key that was used to encrypt.").use(imgTab);
+            Jt.info("Upload the .enc file produced by the Encrypt step. Use the exact same key.").use(imgTab);
 
-            UploadedFile encFile = Jt.fileUploader("Upload .enc file to decrypt").use(imgTab);
+            List<JtUploadedFile> encFiles = Jt.fileUploader("Upload .enc file to decrypt")
+                    .type(List.of(".enc"))
+                    .use(imgTab);
+
+            JtUploadedFile encFile = encFiles.isEmpty() ? null : encFiles.getFirst();
 
             if (encFile != null) {
-                Jt.markdown("**File:** `" + encFile.name() + "` · " + humanSize(encFile.bytes().length)).use(imgTab);
+                Jt.markdown("**File:** `" + encFile.filename() + "` · " + humanSize(encFile.content().length)).use(imgTab);
             }
 
             boolean go = Jt.button("🔓 Decrypt Image").use(imgTab);
@@ -322,31 +301,27 @@ public class App {
                 } else {
                     try {
                         SecretKey key = makeKey(secretKey, keySize);
-                        byte[] decrypted = decrypt(encFile.bytes(), key);
+                        byte[] decrypted = decrypt(encFile.content(), key);
 
                         Jt.success("✅ Image decrypted! (" + humanSize(decrypted.length) + ")").use(imgTab);
                         Jt.subheader("Decrypted image:").use(imgTab);
                         Jt.image(decrypted).use(imgTab);
 
-                        // Download restored image
-                        String baseName = encFile.name().replaceAll("\\.enc$", "");
+                        String baseName = encFile.filename().replaceAll("\\.enc$", "");
                         if (!baseName.matches(".*\\.(png|jpg|jpeg|bmp|gif|webp)$")) baseName += ".png";
                         Jt.html(downloadLink(decrypted, baseName, "image/png", "⬇️ Download " + baseName)).use(imgTab);
 
                     } catch (IllegalArgumentException e) {
                         Jt.error("Invalid file – is this a .enc file from the Encrypt step? " + e.getMessage()).use(imgTab);
                     } catch (Exception e) {
-                        Jt.error("Decryption failed – wrong key, wrong AES mode, or file is corrupted. ("
-                                + e.getClass().getSimpleName() + ")").use(imgTab);
+                        Jt.error("Decryption failed – wrong key, wrong AES mode, or file corrupted. (" + e.getClass().getSimpleName() + ")").use(imgTab);
                     }
                 }
             }
         }
 
-        // ── Footer ────────────────────────────────────────────────────────────
-        Jt.divider("footer").use();
-        Jt.markdown("""
-            > Built with [Javelit](https://javelit.io) 🚡 · AES-CBC · Random IV per operation · [Source on GitHub](#)
-            """).use();
+        // ── Footer ──────────────────────────────────────────────────────────
+        Jt.divider().use();
+        Jt.markdown("> Built with [Javelit](https://javelit.io) 🚡 · AES-CBC · Random IV per operation").use();
     }
 }
