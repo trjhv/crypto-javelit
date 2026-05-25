@@ -12,17 +12,9 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
 
-/**
- * Crypto App – AES-128 / AES-256 Text & Image Encryption/Decryption
- * Built with Javelit (Streamlit for Java)
- * Run:    javelit run App.java
- * Deploy: push to GitHub → Railway one-click
- */
 public class App {
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // AES HELPERS
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── AES HELPERS ───────────────────────────────────────────────────────────
 
     private static SecretKey makeKey(String raw, int keySizeBytes) {
         byte[] keyBytes = new byte[keySizeBytes];
@@ -54,9 +46,7 @@ public class App {
         return cipher.doFinal(cipherText);
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // UTILITY
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── UTILITY ───────────────────────────────────────────────────────────────
 
     private static String humanSize(long bytes) {
         if (bytes < 1024) return bytes + " B";
@@ -109,21 +99,18 @@ public class App {
             """.formatted(color, label);
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // MAIN APP
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── MAIN ──────────────────────────────────────────────────────────────────
 
     public static void main(String[] args) {
 
-        // ── Header ─────────────────────────────────────────────────────────
         Jt.title("🔐 Crypto App").use();
         Jt.markdown("""
-            AES encryption & decryption for **text** and **images**.
-            Enter a key, choose a tab, and go!
+            AES encryption & decryption for **text** and **images**.  
+            Choose your key strength, enter a key, then encrypt or decrypt.
             """).use();
         Jt.divider().use();
 
-        // ── Key configuration ───────────────────────────────────────────────
+        // ── Key configuration ─────────────────────────────────────────────────
         var cols = Jt.columns(2).use();
 
         String aesMode = Jt.radio("AES Strength", List.of("AES-128 (16-char key)", "AES-256 (32-char key)"))
@@ -146,15 +133,17 @@ public class App {
 
         Jt.divider().use();
 
-        // ── Tabs ────────────────────────────────────────────────────────────
+        // ── Tabs ──────────────────────────────────────────────────────────────
         var tabs = Jt.tabs(List.of("📝 Text", "🖼️ Image")).use();
 
-        // ════════════════════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════════════════════
         // TAB 1 – TEXT
-        // ════════════════════════════════════════════════════════════════════
+        // FIX: unique label "Text Mode" avoids key collision with "Image Mode"
+        // ══════════════════════════════════════════════════════════════════════
         var textTab = tabs.tab(0);
 
-        var textMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).key("text-mode").use(textTab);
+        String textMode = Jt.radio("Text Mode", List.of("🔒 Encrypt", "🔓 Decrypt"))
+                .use(textTab);
         boolean isTextEncrypt = textMode.startsWith("🔒");
 
         if (isTextEncrypt) {
@@ -180,7 +169,7 @@ public class App {
                                 .formatted(humanSize(plainText.length()), humanSize(b64.length()))).use(textTab);
                         Jt.subheader("Encrypted output (Base64):").use(textTab);
                         Jt.html(copyableText(b64)).use(textTab);
-                        Jt.info("💡 Paste this in Decrypt mode with the same key to reverse.").use(textTab);
+                        Jt.info("💡 Copy this and paste it in Decrypt mode to reverse.").use(textTab);
                     } catch (Exception e) {
                         Jt.error("Encryption failed: " + e.getMessage()).use(textTab);
                     }
@@ -210,7 +199,7 @@ public class App {
                         Jt.subheader("Decrypted text:").use(textTab);
                         Jt.text(result).use(textTab);
                     } catch (IllegalArgumentException e) {
-                        Jt.error("Invalid Base64 – make sure you pasted the full encrypted output.").use(textTab);
+                        Jt.error("Invalid Base64 – paste the full encrypted output.").use(textTab);
                     } catch (Exception e) {
                         Jt.error("Decryption failed – wrong key or corrupted data. (" + e.getClass().getSimpleName() + ")").use(textTab);
                     }
@@ -218,25 +207,26 @@ public class App {
             }
         }
 
-        // ════════════════════════════════════════════════════════════════════
+        // ══════════════════════════════════════════════════════════════════════
         // TAB 2 – IMAGE
-        // ════════════════════════════════════════════════════════════════════
+        // FIX: unique label "Image Mode" avoids key collision with "Text Mode"
+        // ══════════════════════════════════════════════════════════════════════
         var imgTab = tabs.tab(1);
 
-        var imgMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).key("img-mode").use(imgTab);
+        String imgMode = Jt.radio("Image Mode", List.of("🔒 Encrypt", "🔓 Decrypt"))
+                .use(imgTab);
         boolean isImgEncrypt = imgMode.startsWith("🔒");
 
         if (isImgEncrypt) {
 
-            Jt.info("Upload a PNG, JPG, or BMP. The encrypted file downloads as .enc — upload it in Decrypt mode to restore.").use(imgTab);
+            Jt.info("Upload a PNG, JPG, or BMP. Encrypted file downloads as .enc — upload it in Decrypt mode to restore.").use(imgTab);
 
-            List<JtUploadedFile> imgFiles = Jt.fileUploader("Upload image to encrypt")
-                    .type(List.of(".png", ".jpg", ".jpeg", ".bmp"))
-                    .use(imgTab);
-
+            // FIX: fileUploader returns List<JtUploadedFile>, not a single object
+            List<JtUploadedFile> imgFiles = Jt.fileUploader("Upload image to encrypt").use(imgTab);
             JtUploadedFile imgFile = imgFiles.isEmpty() ? null : imgFiles.getFirst();
 
             if (imgFile != null) {
+                // FIX: .filename() not .name(), .content() not .bytes()
                 Jt.markdown("**File:** `" + imgFile.filename() + "` · " + humanSize(imgFile.content().length)).use(imgTab);
             }
 
@@ -254,22 +244,19 @@ public class App {
                         byte[] encrypted = encrypt(imgBytes, key);
 
                         var imgCols = Jt.columns(2).use(imgTab);
-
                         Jt.subheader("Original").use(imgCols.col(0));
                         Jt.image(imgBytes).use(imgCols.col(0));
                         Jt.text(humanSize(imgBytes.length)).use(imgCols.col(0));
 
                         Jt.subheader("Encrypted").use(imgCols.col(1));
-                        Jt.markdown("The encrypted file is **binary** — it cannot be displayed as an image. Download it below and keep it safe.").use(imgCols.col(1));
-                        Jt.text("Encrypted size: " + humanSize(encrypted.length)).use(imgCols.col(1));
+                        Jt.markdown("Binary data — not displayable. Download and keep safe.").use(imgCols.col(1));
+                        Jt.text("Size: " + humanSize(encrypted.length)).use(imgCols.col(1));
 
                         Jt.success("✅ Image encrypted!").use(imgTab);
-
                         String baseName = imgFile.filename().replaceAll("\\.[^.]+$", "");
                         Jt.html(downloadLink(encrypted, baseName + ".enc",
                                 "application/octet-stream", "⬇️ Download " + baseName + ".enc")).use(imgTab);
-
-                        Jt.info("💡 Upload the .enc file (with the same key) in Decrypt mode to restore the image.").use(imgTab);
+                        Jt.info("💡 Upload this .enc file (same key) in Decrypt mode to restore the image.").use(imgTab);
 
                     } catch (Exception e) {
                         Jt.error("Encryption failed: " + e.getMessage()).use(imgTab);
@@ -279,12 +266,10 @@ public class App {
 
         } else {
 
-            Jt.info("Upload the .enc file produced by the Encrypt step. Use the exact same key.").use(imgTab);
+            Jt.info("Upload the .enc file from the Encrypt step. Use the exact same key.").use(imgTab);
 
-            List<JtUploadedFile> encFiles = Jt.fileUploader("Upload .enc file to decrypt")
-                    .type(List.of(".enc"))
-                    .use(imgTab);
-
+            // FIX: fileUploader returns List<JtUploadedFile>
+            List<JtUploadedFile> encFiles = Jt.fileUploader("Upload .enc file to decrypt").use(imgTab);
             JtUploadedFile encFile = encFiles.isEmpty() ? null : encFiles.getFirst();
 
             if (encFile != null) {
@@ -297,7 +282,7 @@ public class App {
                 if (!keyOk) {
                     Jt.error("Enter a secret key first.").use(imgTab);
                 } else if (encFile == null) {
-                    Jt.warning("Upload an .enc file first.").use(imgTab);
+                    Jt.warning("Upload a .enc file first.").use(imgTab);
                 } else {
                     try {
                         SecretKey key = makeKey(secretKey, keySize);
@@ -312,15 +297,15 @@ public class App {
                         Jt.html(downloadLink(decrypted, baseName, "image/png", "⬇️ Download " + baseName)).use(imgTab);
 
                     } catch (IllegalArgumentException e) {
-                        Jt.error("Invalid file – is this a .enc file from the Encrypt step? " + e.getMessage()).use(imgTab);
+                        Jt.error("Invalid file: " + e.getMessage()).use(imgTab);
                     } catch (Exception e) {
-                        Jt.error("Decryption failed – wrong key, wrong AES mode, or file corrupted. (" + e.getClass().getSimpleName() + ")").use(imgTab);
+                        Jt.error("Decryption failed – wrong key or wrong AES mode. (" + e.getClass().getSimpleName() + ")").use(imgTab);
                     }
                 }
             }
         }
 
-        // ── Footer ──────────────────────────────────────────────────────────
+        // ── Footer ────────────────────────────────────────────────────────────
         Jt.divider().use();
         Jt.markdown("> Built with [Javelit](https://javelit.io) 🚡 · AES-CBC · Random IV per operation").use();
     }
