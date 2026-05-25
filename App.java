@@ -3,6 +3,7 @@
 
 import io.javelit.core.Jt;
 import io.javelit.core.JtUploadedFile;
+import io.javelit.core.JtComponent.LabelVisibility;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
@@ -142,13 +143,13 @@ public class App {
         // Encrypt input — hidden (but still in tree) when in Decrypt mode
         String plainText = Jt.textArea("Message to encrypt")
                 .placeholder("Type your secret message here…")
-                .labelVisibility(textEncMode ? "VISIBLE" : "HIDDEN")
+                .labelVisibility(textEncMode ? LabelVisibility.VISIBLE : LabelVisibility.HIDDEN)
                 .use(T);
 
         // Decrypt input — hidden when in Encrypt mode
         String cipherIn = Jt.textArea("Paste encrypted Base64 here")
                 .placeholder("Paste the Base64 cipher text here…")
-                .labelVisibility(textEncMode ? "HIDDEN" : "VISIBLE")
+                .labelVisibility(textEncMode ? LabelVisibility.HIDDEN : LabelVisibility.VISIBLE)
                 .use(T);
 
         // Single action button — label changes with mode
@@ -211,13 +212,13 @@ public class App {
 
         // Uploader 1 — for image to encrypt (hidden in decrypt mode)
         List<JtUploadedFile> imgUploads = Jt.fileUploader("Image to encrypt  (PNG / JPG / BMP)")
-                .labelVisibility(imgEncMode ? "VISIBLE" : "HIDDEN")
+                .labelVisibility(imgEncMode ? LabelVisibility.VISIBLE : LabelVisibility.HIDDEN)
                 .use(I);
         JtUploadedFile imgFile = imgUploads.isEmpty() ? null : imgUploads.getFirst();
 
         // Uploader 2 — for .enc file to decrypt (hidden in encrypt mode)
         List<JtUploadedFile> encUploads = Jt.fileUploader("Encrypted .enc file to decrypt")
-                .labelVisibility(imgEncMode ? "HIDDEN" : "VISIBLE")
+                .labelVisibility(imgEncMode ? LabelVisibility.HIDDEN : LabelVisibility.VISIBLE)
                 .use(I);
         JtUploadedFile encFile = encUploads.isEmpty() ? null : encUploads.getFirst();
 
