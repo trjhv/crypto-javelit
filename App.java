@@ -47,71 +47,80 @@ public class App {
         return c.doFinal(ct);
     }
 
-    // ── UTILS ─────────────────────────────────────────────────────────────────
-
     private static String humanSize(long b) {
         if (b < 1024) return b + " B";
         if (b < 1048576) return String.format("%.1f KB", b / 1024.0);
         return String.format("%.2f MB", b / 1048576.0);
     }
 
-    // Blob-based download — works inside Railway iframe (data: URIs are blocked)
-    private static String blobDownload(byte[] data, String filename) {
+    // ── HTML HELPERS ──────────────────────────────────────────────────────────
+
+    // Copy button: uses a hidden textarea so special chars (+ / = newlines) are safe
+    private static String copyWidget(String id, String text) {
+        // Store text in a hidden textarea, read it back with JS — no escaping issues
+        return "<textarea id=\"" + id + "\" style=\"position:absolute;left:-9999px\">"
+             + text + "</textarea>"
+             + "<div style=\"background:#1e1e2e;color:#cdd6f4;padding:12px 12px 12px 12px;"
+             + "border-radius:6px;font-size:11px;white-space:pre-wrap;word-break:break-all;"
+             + "max-height:180px;overflow-y:auto;position:relative;margin-top:8px\">"
+             + "<button onclick=\"var t=document.getElementById('" + id + "');"
+             + "t.style.display='block';t.select();document.execCommand('copy');"
+             + "t.style.display='none';this.textContent='✅ Copied!';"
+             + "setTimeout(()=>this.textContent='📋 Copy',1800)\" "
+             + "style=\"position:absolute;top:6px;right:6px;padding:4px 10px;"
+             + "background:#1565c0;color:#fff;border:none;border-radius:4px;"
+             + "cursor:pointer;font-size:12px\">📋 Copy</button>"
+             + text + "</div>";
+    }
+
+    // Download button: writes a hidden <a> into DOM and clicks it — avoids inline b64 in JS
+    private static String downloadWidget(String id, byte[] data, String filename) {
         String b64 = Base64.getEncoder().encodeToString(data);
-        return "<button onclick=\"(function(){"
-             + "var b=atob('" + b64 + "'),"
-             + "u=new Uint8Array(b.length);"
-             + "for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);"
+        // Split into chunks to avoid browser/JVM string limits in the HTML attribute
+        // Store b64 in a hidden element, assemble the URL in JS
+        return "<span id=\"" + id + "b\" style=\"display:none\">" + b64 + "</span>"
+             + "<button onclick=\""
+             + "var b64=document.getElementById('" + id + "b').textContent;"
+             + "var bin=atob(b64);"
+             + "var bytes=new Uint8Array(bin.length);"
+             + "for(var i=0;i<bin.length;i++){bytes[i]=bin.charCodeAt(i);}"
+             + "var blob=new Blob([bytes],{type:'application/octet-stream'});"
+             + "var url=URL.createObjectURL(blob);"
              + "var a=document.createElement('a');"
-             + "a.href=URL.createObjectURL(new Blob([u],{type:'application/octet-stream'}));"
-             + "a.download='" + filename + "';"
+             + "a.href=url;a.download='" + filename + "';"
              + "document.body.appendChild(a);a.click();"
-             + "setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1000)"
-             + "})()\" style=\"margin-top:12px;padding:10px 22px;background:#1565c0;"
+             + "setTimeout(function(){URL.revokeObjectURL(url);a.remove();},2000);"
+             + "\" style=\"margin-top:12px;padding:10px 22px;background:#1565c0;"
              + "color:#fff;border:none;border-radius:6px;font-size:14px;"
              + "font-weight:600;cursor:pointer\">⬇️ Download " + filename + "</button>";
     }
 
-    private static String copyBtn(String text) {
-        String esc = text.replace("\\", "\\\\").replace("`", "\\`");
-        return "<div style='position:relative;margin-top:8px'>"
-             + "<button onclick=\"navigator.clipboard.writeText(`" + esc + "`)"
-             + ".then(()=>{this.textContent='✅ Copied!';"
-             + "setTimeout(()=>this.textContent='📋 Copy',1500)})\" "
-             + "style='position:absolute;top:6px;right:6px;padding:4px 10px;"
-             + "background:#1565c0;color:#fff;border:none;border-radius:4px;"
-             + "cursor:pointer;font-size:12px'>📋 Copy</button>"
-             + "<pre style='background:#1e1e2e;color:#cdd6f4;padding:14px;"
-             + "border-radius:6px;font-size:11px;white-space:pre-wrap;"
-             + "word-break:break-all;max-height:180px'>" + text + "</pre></div>";
-    }
-
     // ── MAIN ──────────────────────────────────────────────────────────────────
     //
-    // JAVELIT GOLDEN RULE: every .use() call must appear on EVERY run of main()
-    // in the exact same order. Never put .use() inside if/else.
-    // Only put non-widget OUTPUT (text, html, image, success, error) in if/else.
+    // JAVELIT RULE: every .use() must appear unconditionally on every run,
+    // in the same order, with the same label. Never put .use() inside if/else.
+    // Only non-widget output (success/error/html/image/text) goes in if/else.
     //
     // ──────────────────────────────────────────────────────────────────────────
 
     public static void main(String[] args) {
 
         Jt.title("🔐 Crypto App").use();
-        Jt.markdown("AES encryption & decryption for **text** and **images**.").use();
+        Jt.markdown("AES-128/256 encryption & decryption for **text** and **images**.").use();
         Jt.divider().use();
 
-        // ── Key config (always rendered) ──────────────────────────────────────
+        // ── Key row ───────────────────────────────────────────────────────────
         var keyRow = Jt.columns(2).use();
         String aesChoice = Jt.radio("AES Strength",
-                List.of("AES-128 (16-char key)", "AES-256 (32-char key)"))
+                List.of("AES-128  (16-char key)", "AES-256  (32-char key)"))
                 .use(keyRow.col(0));
         int keySize = aesChoice.startsWith("AES-256") ? 32 : 16;
         String secretKey = Jt.textInput("🔑 Secret Key")
-                .placeholder(keySize == 16 ? "mysecretkey12345" : "mysecretkey1234567890123456789012")
+                .placeholder(keySize == 16 ? "mysecretkey12345"
+                                           : "mysecretkey1234567890123456789012")
                 .use(keyRow.col(1));
         boolean keyOk = secretKey != null && !secretKey.isBlank();
         if (!keyOk) Jt.warning("Enter a secret key to begin.").use();
-
         Jt.divider().use();
 
         // ── Tabs ──────────────────────────────────────────────────────────────
@@ -119,38 +128,47 @@ public class App {
 
         // ══════════════════════════════════════════════════════════════════════
         // TEXT TAB
-        // All widgets rendered unconditionally. Mode radio drives which
-        // button click is handled. Both inputs always present in widget tree.
+        // All .use() calls unconditional. Mode radio is always rendered.
+        // Both inputs always rendered — they have different labels so different keys.
+        // Both buttons always rendered — fixed labels, different keys.
+        // Output (success/error) gated by button press + mode check.
         // ══════════════════════════════════════════════════════════════════════
         var T = tabs.tab(0);
 
-        // Mode radio — always rendered, always in same position
-        String textMode = Jt.radio("Select mode",
-                List.of("🔒 Encrypt text", "🔓 Decrypt text"))
+        // Mode selector — always present, drives which button does something
+        String textMode = Jt.radio("── Text Mode ──",
+                List.of("🔒 Encrypt", "🔓 Decrypt"))
                 .use(T);
-        boolean tEnc = textMode.equals("🔒 Encrypt text");
+        boolean tEnc = textMode.equals("🔒 Encrypt");
 
-        // BOTH inputs always rendered — unique labels = unique widget keys
-        String plainIn = Jt.textArea("✏️ Plain text  (type here to encrypt)")
+        // Separator so user knows which input belongs to which mode
+        Jt.markdown(tEnc
+                ? "**Step 1:** Type your message below, then click **Encrypt Text**."
+                : "**Step 1:** Paste the Base64 cipher below, then click **Decrypt Text**.")
+                .use(T);
+
+        // Plain text input — always rendered, unique label
+        String plainIn = Jt.textArea("✏️  Plain text to encrypt")
                 .placeholder("Type your secret message here…")
                 .use(T);
 
-        String cipherIn = Jt.textArea("🔡 Encrypted Base64  (paste here to decrypt)")
+        // Cipher input — always rendered, unique label
+        String cipherIn = Jt.textArea("🔡  Encrypted Base64 to decrypt")
                 .placeholder("Paste the Base64 cipher text here…")
                 .use(T);
 
-        // BOTH buttons always rendered — unique labels = unique widget keys
-        boolean btnEncText = Jt.button("🔒 Encrypt →").use(T);
-        boolean btnDecText = Jt.button("🔓 Decrypt →").use(T);
+        // Both buttons — always rendered, fixed unique labels
+        boolean btnEncText = Jt.button("🔒 Encrypt Text").use(T);
+        boolean btnDecText = Jt.button("🔓 Decrypt Text").use(T);
 
-        // OUTPUT — non-widget, safe inside if/else
+        // ── Text output (non-widget, safe in if/else) ─────────────────────────
         if (btnEncText) {
             if (!keyOk) {
                 Jt.error("Enter a secret key first.").use(T);
             } else if (!tEnc) {
-                Jt.warning("Switch the mode to **🔒 Encrypt text** first.").use(T);
+                Jt.warning("Switch mode to **🔒 Encrypt** (radio above) then click Encrypt Text.").use(T);
             } else if (plainIn == null || plainIn.isBlank()) {
-                Jt.warning("Type some text in the plain text box above.").use(T);
+                Jt.warning("Type something in the **Plain text** box above.").use(T);
             } else {
                 try {
                     byte[] enc = encrypt(
@@ -159,8 +177,8 @@ public class App {
                     String b64 = Base64.getEncoder().encodeToString(enc);
                     Jt.success("✅ Encrypted!  " + humanSize(plainIn.length())
                              + " → " + humanSize(b64.length())).use(T);
-                    Jt.subheader("Result (Base64) — copy and paste into Decrypt box:").use(T);
-                    Jt.html(copyBtn(b64)).use(T);
+                    Jt.subheader("Encrypted output — copy and paste into Decrypt box:").use(T);
+                    Jt.html(copyWidget("txt_enc_out", b64)).use(T);
                 } catch (Exception e) {
                     Jt.error("Encryption error: " + e.getMessage()).use(T);
                 }
@@ -171,12 +189,12 @@ public class App {
             if (!keyOk) {
                 Jt.error("Enter a secret key first.").use(T);
             } else if (tEnc) {
-                Jt.warning("Switch the mode to **🔓 Decrypt text** first.").use(T);
+                Jt.warning("Switch mode to **🔓 Decrypt** (radio above) then click Decrypt Text.").use(T);
             } else if (cipherIn == null || cipherIn.isBlank()) {
-                Jt.warning("Paste the encrypted Base64 text in the second box above.").use(T);
+                Jt.warning("Paste the Base64 cipher in the **Encrypted Base64** box above.").use(T);
             } else {
                 try {
-                    byte[] raw = Base64.getDecoder().decode(cipherIn.trim());
+                    byte[] raw   = Base64.getDecoder().decode(cipherIn.trim());
                     byte[] plain = decrypt(raw, makeKey(secretKey, keySize));
                     Jt.success("✅ Decrypted successfully!").use(T);
                     Jt.subheader("Decrypted message:").use(T);
@@ -192,58 +210,63 @@ public class App {
 
         // ══════════════════════════════════════════════════════════════════════
         // IMAGE TAB
-        // Same pattern — both uploaders always rendered, mode radio drives
-        // which button is acted on.
+        // Same pattern. Both uploaders always rendered. Both buttons fixed labels.
         // ══════════════════════════════════════════════════════════════════════
         var I = tabs.tab(1);
 
-        String imgMode = Jt.radio("Select mode",
-                List.of("🔒 Encrypt image", "🔓 Decrypt image"))
+        String imgMode = Jt.radio("── Image Mode ──",
+                List.of("🔒 Encrypt", "🔓 Decrypt"))
                 .use(I);
-        boolean iEnc = imgMode.equals("🔒 Encrypt image");
+        boolean iEnc = imgMode.equals("🔒 Encrypt");
 
-        // Uploader A — for image files (PNG/JPG/BMP)
-        Jt.markdown("**📁 Image uploader** — select a PNG / JPG / BMP to encrypt:").use(I);
-        List<JtUploadedFile> imgUploads = Jt.fileUploader("Choose image").use(I);
+        Jt.markdown(iEnc
+                ? "**Step 1:** Upload your image below → **Step 2:** Click **Encrypt Image**."
+                : "**Step 1:** Upload the `.enc` file below → **Step 2:** Click **Decrypt Image**.")
+                .use(I);
+
+        // Uploader A — image files, always rendered
+        Jt.markdown("📁 **Image uploader** (PNG / JPG / BMP — for encryption):").use(I);
+        List<JtUploadedFile> imgUploads = Jt.fileUploader("Choose image file").use(I);
         JtUploadedFile imgFile = imgUploads.isEmpty() ? null : imgUploads.getFirst();
         if (imgFile != null)
-            Jt.markdown("`" + imgFile.filename() + "` — " + humanSize(imgFile.content().length)).use(I);
+            Jt.markdown("Selected: `" + imgFile.filename()
+                      + "` (" + humanSize(imgFile.content().length) + ")").use(I);
 
-        // Uploader B — for .enc files
-        Jt.markdown("**📁 Encrypted file uploader** — select a `.enc` file to decrypt:").use(I);
+        // Uploader B — enc files, always rendered
+        Jt.markdown("📁 **Encrypted file uploader** (`.enc` file — for decryption):").use(I);
         List<JtUploadedFile> encUploads = Jt.fileUploader("Choose enc file").use(I);
         JtUploadedFile encFile = encUploads.isEmpty() ? null : encUploads.getFirst();
         if (encFile != null)
-            Jt.markdown("`" + encFile.filename() + "` — " + humanSize(encFile.content().length)).use(I);
+            Jt.markdown("Selected: `" + encFile.filename()
+                      + "` (" + humanSize(encFile.content().length) + ")").use(I);
 
-        // Both buttons always rendered
-        boolean btnEncImg = Jt.button("🔒 Encrypt Image →").use(I);
-        boolean btnDecImg = Jt.button("🔓 Decrypt Image →").use(I);
+        // Both buttons — always rendered, fixed unique labels
+        boolean btnEncImg = Jt.button("🔒 Encrypt Image").use(I);
+        boolean btnDecImg = Jt.button("🔓 Decrypt Image").use(I);
 
-        // OUTPUT — non-widget, safe inside if/else
+        // ── Image output (non-widget, safe in if/else) ────────────────────────
         if (btnEncImg) {
             if (!keyOk) {
                 Jt.error("Enter a secret key first.").use(I);
             } else if (!iEnc) {
-                Jt.warning("Switch the mode to **🔒 Encrypt image** first.").use(I);
+                Jt.warning("Switch mode to **🔒 Encrypt** (radio above) then click Encrypt Image.").use(I);
             } else if (imgFile == null) {
                 Jt.warning("Upload an image using the **Image uploader** above.").use(I);
             } else {
                 try {
-                    byte[] imgBytes = imgFile.content();
+                    byte[] imgBytes  = imgFile.content();
                     byte[] encrypted = encrypt(imgBytes, makeKey(secretKey, keySize));
-                    String baseName = imgFile.filename().replaceAll("\\.[^.]+$", "");
-                    String encFilename = baseName + ".enc";
+                    String base      = imgFile.filename().replaceAll("\\.[^.]+$", "");
+                    String encName   = base + ".enc";
 
-                    Jt.success("✅ Image encrypted!  "
-                             + humanSize(imgBytes.length) + " → "
-                             + humanSize(encrypted.length)).use(I);
-                    Jt.subheader("Original image:").use(I);
+                    Jt.success("✅ Encrypted!  " + humanSize(imgBytes.length)
+                             + " → " + humanSize(encrypted.length)).use(I);
+                    Jt.markdown("**Original image:**").use(I);
                     Jt.image(imgBytes).use(I);
-                    Jt.markdown("Encrypted file is binary — not displayable as an image.").use(I);
-                    Jt.html(blobDownload(encrypted, encFilename)).use(I);
-                    Jt.info("Upload the downloaded `" + encFilename
-                          + "` using the **Encrypted file uploader**, switch to Decrypt, use the same key.").use(I);
+                    Jt.markdown("Encrypted file is binary — use the download button below.").use(I);
+                    Jt.html(downloadWidget("img_enc", encrypted, encName)).use(I);
+                    Jt.info("After downloading, upload the `" + encName
+                          + "` using the **Encrypted file uploader**, switch mode to 🔓 Decrypt.").use(I);
                 } catch (Exception e) {
                     Jt.error("Encryption error: " + e.getMessage()).use(I);
                 }
@@ -254,19 +277,19 @@ public class App {
             if (!keyOk) {
                 Jt.error("Enter a secret key first.").use(I);
             } else if (iEnc) {
-                Jt.warning("Switch the mode to **🔓 Decrypt image** first.").use(I);
+                Jt.warning("Switch mode to **🔓 Decrypt** (radio above) then click Decrypt Image.").use(I);
             } else if (encFile == null) {
                 Jt.warning("Upload a `.enc` file using the **Encrypted file uploader** above.").use(I);
             } else {
                 try {
                     byte[] decrypted = decrypt(encFile.content(), makeKey(secretKey, keySize));
-                    String baseName = encFile.filename().replaceAll("\\.enc$", "");
-                    if (!baseName.matches(".*\\.(png|jpg|jpeg|bmp|gif|webp)$")) baseName += ".png";
+                    String base      = encFile.filename().replaceAll("\\.enc$", "");
+                    if (!base.matches(".*\\.(png|jpg|jpeg|bmp|gif|webp)$")) base += ".png";
 
-                    Jt.success("✅ Image decrypted!  (" + humanSize(decrypted.length) + ")").use(I);
+                    Jt.success("✅ Decrypted!  (" + humanSize(decrypted.length) + ")").use(I);
                     Jt.subheader("Restored image:").use(I);
                     Jt.image(decrypted).use(I);
-                    Jt.html(blobDownload(decrypted, baseName)).use(I);
+                    Jt.html(downloadWidget("img_dec", decrypted, base)).use(I);
                 } catch (IllegalArgumentException e) {
                     Jt.error("Invalid file: " + e.getMessage()).use(I);
                 } catch (Exception e) {
