@@ -154,7 +154,7 @@ public class App {
         // ════════════════════════════════════════════════════════════════════
         var textTab = tabs.tab(0);
 
-        var textMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).use(textTab);
+        var textMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).key("text-mode").use(textTab);
         boolean isTextEncrypt = textMode.startsWith("🔒");
 
         if (isTextEncrypt) {
@@ -223,7 +223,7 @@ public class App {
         // ════════════════════════════════════════════════════════════════════
         var imgTab = tabs.tab(1);
 
-        var imgMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).use(imgTab);
+        var imgMode = Jt.radio("Mode", List.of("🔒 Encrypt", "🔓 Decrypt")).key("img-mode").use(imgTab);
         boolean isImgEncrypt = imgMode.startsWith("🔒");
 
         if (isImgEncrypt) {
